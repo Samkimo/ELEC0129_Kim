@@ -1,0 +1,123 @@
+#include<math.h>
+#include<Servo.h>
+// Define the link length (cm)
+const float L1 = 0.0;
+const float L2 = 9.6;
+const float Lg = 14.9;
+
+// Define the starting position
+const float angle1_start = 90.0;
+const float angle2_start = 90.0;
+const float angle3_start = 90.0;
+
+// Define the offset angles
+const float offset_theta1 = 7;
+const float offset_theta2 = 2;
+const float offset_theta3 = -5;
+
+// Servo objects
+Servo servo1; // Base Yaw
+Servo servo2; // Should Pitch
+Servo servo3; // Elbow Pitch
+
+// Pot pins
+const int base_PIN = A2;
+const int shoulder_PIN = A3;
+const int elbow_PIN = A1;
+
+// Define the workspace
+float X_MIN = 0.0;
+float X_MAX = 25.0;
+
+float Y_MIN = -24.5;
+float Y_MAX = 24.5;
+
+float Z_MIN = 0.0;
+float Z_MAX = 26.0;
+
+// Mapping
+float mapFloat (float x, float inMIN, float inMAX, float outMIN, float outMAX){
+  float value = (x - inMIN) * ((outMAX - outMIN) / (inMAX - inMIN)) + outMIN;
+  return value;
+}
+
+void moveToPosition(float x, float y, float z){
+  bool OK = true;
+  float theta1_rad = atan2(y,x);
+  
+  float R = sqrt(pow(x,2) + pow(y, 2));
+  float z_prime = z - L1;
+  float c3 = (pow(R,2) + pow(z_prime, 2) - pow(L2, 2) - pow(Lg, 2)) / (2.0 * L2 * Lg);
+  float s3 = -sqrt(1.0 - pow(c3, 2));
+  float theta3_rad = -atan2(s3, c3);
+
+
+  if (c3 < -1.0 || c3 > 1.0){
+    OK = false;
+  }
+
+  if (OK == false){
+    Serial.print("The position is not reachable");
+  } else {
+    float K1 = L2 + Lg * c3;
+    float K2 = Lg * s3;
+  
+    float beta = atan2(K2, K1);
+    float theta2_rad = atan2(z_prime, R) - beta;
+  
+    int angle1 = round((theta1_rad * 180.0 / PI) + offset_theta1);
+    int angle2 = round((theta2_rad * 180.0 / PI) + offset_theta2);
+    int angle3 = -round((theta3_rad * 180.0 / PI) + offset_theta3);
+
+    servo1.write(constrain(angle1, 0, 180));
+    servo2.write(constrain(angle2, 0, 180));
+    servo3.write(constrain(angle3, 0, 180));
+
+    Serial.print("Angles: ");
+    Serial.print(angle1); Serial.print(", ");
+    Serial.print(angle2); Serial.print(", ");
+    Serial.print(angle3); Serial.print(" | ");
+  }
+  
+  
+}
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(115200);
+  servo1.attach(2);
+  servo2.attach(3);
+  servo3.attach(4);
+
+  Serial.println("3-DOF CARTESIAN CONTROL STARTED");
+
+  servo1.write(angle1_start + offset_theta1);
+  servo2.write(angle2_start + offset_theta2);
+  servo3.write(angle3_start + offset_theta3);
+  delay(5000);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  float targetX_raw = analogRead(base_PIN);
+  float targetY_raw = analogRead(shoulder_PIN);
+  float targetZ_raw = analogRead(elbow_PIN);
+
+  float targetX = mapFloat(targetX_raw, 0, 1023, X_MIN, X_MAX);
+  float targetY = mapFloat(targetY_raw, 0, 1023, Y_MIN, Y_MAX);
+  float targetZ = mapFloat(targetZ_raw, 0, 1023, Z_MIN, Z_MAX);
+
+  moveToPosition(targetX, targetY, targetZ);
+
+  Serial.print("XYZ: ");
+  Serial.print(targetX); Serial.print(", ");
+  Serial.print(targetY); Serial.print(", ");
+  Serial.print(targetZ); Serial.print(" | ");
+
+  Serial.print("Raw XYZ: "); 
+  Serial.print(targetX_raw); Serial.print(", ");
+  Serial.print(targetY_raw); Serial.print(", ");
+  Serial.print(targetZ_raw); Serial.print(" | \n");
+
+  delay(200);
+}
